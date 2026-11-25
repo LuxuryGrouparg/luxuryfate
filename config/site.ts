@@ -21,7 +21,10 @@ export type SiteImage = {
 
 export const site = {
   name: 'Luxury Fade Studio',
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
+  // En Vercel, sin NEXT_PUBLIC_SITE_URL, usa el dominio de producción del proyecto (o el propio, si lo conectás).
+  url:
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000'),
   seo: {
     title: 'Luxury Fade Studio · Cuidado personal masculino a domicilio en Corrientes y Resistencia',
     description:
