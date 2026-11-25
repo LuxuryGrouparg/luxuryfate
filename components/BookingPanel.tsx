@@ -17,7 +17,6 @@ const CITIES: { id: City; name: string }[] = [
   { id: 'resistencia', name: 'Resistencia' },
 ];
 const SERVICES = [...site.services].sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
-const MIN_PRICE = Math.min(...site.services.map((s) => s.price));
 const EMPTY_FORM: BookingForm = { firstName: '', lastName: '', whatsapp: '', city: 'corrientes', address: '', note: '' };
 const { martesStudio, ritualMensual } = site.promos;
 
@@ -227,11 +226,11 @@ export default function BookingPanel() {
   const footer = (() => {
     switch (step) {
       case 1:
-        return { label: 'Desde', amount: MIN_PRICE, cta: 'Continuar', disabled: !client, onClick: () => setStep(2) };
+        return { label: 'Total', amount: null, cta: 'Continuar', disabled: !client, onClick: () => setStep(2) };
       case 2:
         return {
-          label: service ? 'Total' : 'Desde',
-          amount: service ? price : MIN_PRICE,
+          label: 'Total',
+          amount: service ? price : null, // sin precio hasta elegir servicio, para que no parezca un adicional
           cta: 'Elegir horario',
           disabled: !service,
           onClick: () => service && pickService(service.id),
@@ -577,10 +576,12 @@ export default function BookingPanel() {
 
         {/* Pie */}
         <div className="flex flex-col gap-3 border-t border-bk-line px-6 pt-[18px] pb-[22px]">
-          <div className="flex items-baseline justify-between text-sm text-muted">
-            <span>{footer.label}</span>
-            <span className="hx text-2xl font-bold text-white">{formatPrice(footer.amount)}</span>
-          </div>
+          {footer.amount !== null && (
+            <div className="flex items-baseline justify-between text-sm text-muted">
+              <span>{footer.label}</span>
+              <span className="hx text-2xl font-bold text-white">{formatPrice(footer.amount)}</span>
+            </div>
+          )}
           <button
             type={footer.submit ? 'submit' : 'button'}
             form={footer.submit ? 'bk-form' : undefined}
