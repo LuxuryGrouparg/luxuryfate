@@ -8,11 +8,26 @@ const footLabel = 'lb mb-3 text-[10px] text-ivory';
 // Mosaico de la galería en desktop (mobile: 1 columna).
 const TILE = ['md:row-span-2', '', 'md:row-span-2', '', 'md:col-span-full aspect-[3/2] md:aspect-auto'];
 
+const perks = Object.values(site.promos)
+  .filter((p) => p.active)
+  .map((p) => p.text);
+
 export default function Home() {
   const { contact, coverage } = site;
 
   return (
     <>
+      {/* Franja de beneficios: solo si hay alguno activo (config/site.ts → promos) */}
+      {perks.length > 0 && (
+        // En celular queda en una línea y se desliza de costado si no entra.
+        <div className="overflow-x-auto bg-green-900 px-4 py-2.5 text-[10px] leading-[1.6] tracking-[.18em] whitespace-nowrap text-green-200 uppercase [scrollbar-width:none] md:text-center md:text-[11px]">
+          {perks.join(' · ')}
+          {' · '}
+          <BookButton className="cursor-pointer tracking-[.18em] text-white uppercase underline decoration-green-400 underline-offset-4 hover:decoration-white">
+            Agendar
+          </BookButton>
+        </div>
+      )}
       <Header />
 
       <main>
@@ -52,7 +67,7 @@ export default function Home() {
         <section id="about" className="bg-ivory px-4 py-24 text-black md:px-10 md:py-[130px]">
           <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-x-6 gap-y-14 md:grid-cols-12">
             <div className="lb flex flex-wrap items-baseline justify-between gap-3 border-b border-black pb-[18px] text-grey md:col-span-12">
-              <span>01 — Nosotros</span>
+              <span className="text-green-700">01 — Nosotros</span>
               <span>{site.name} · Experiencia privada</span>
             </div>
             <h2 className="hx text-[clamp(44px,6.4vw,104px)] leading-[.9] md:col-span-7">
@@ -73,15 +88,16 @@ export default function Home() {
               <div className="lb mt-2 flex flex-col gap-2 text-[10px] text-grey">
                 <span>A domicilio en {coverage.cities.join(' y ')}</span>
                 <span>Turnos privados, coordinados con anticipación</span>
+                <span>Turnos de 1 hora, dedicados solo a vos</span>
               </div>
             </div>
-            <ol className="grid grid-cols-2 border-t border-black md:col-span-12 md:grid-cols-5">
+            <ol className="grid grid-cols-2 border-t border-green-400 md:col-span-12 md:grid-cols-5">
               {site.moments.map((m, i) => (
                 <li
                   key={m.title}
                   className="border-[#CFCFCC] pt-[26px] pr-5 pb-6 last:col-span-2 md:border-r md:pb-0 md:pl-5 md:first:pl-0 md:last:col-span-1 md:last:border-r-0 md:last:pr-0"
                 >
-                  <div className="lb text-[10px] text-dim">{String(i + 1).padStart(2, '0')}</div>
+                  <div className="lb text-[10px] text-green-700">{String(i + 1).padStart(2, '0')}</div>
                   <div className="hx mt-2.5 text-2xl">{m.title}</div>
                   <div className="mt-1.5 text-[13px] text-grey">{m.line}</div>
                 </li>
@@ -116,7 +132,7 @@ export default function Home() {
               className="min-h-[420px] grow basis-[560px] md:min-h-[620px]"
             />
             <div className="flex grow basis-[380px] flex-col justify-center gap-[34px] px-4 py-20 md:px-14 md:py-[90px]">
-              <span className="lb text-dim">03 — Contacto</span>
+              <span className="lb text-green-200">03 — Contacto</span>
               <h2 className="hx text-[clamp(48px,5vw,80px)] leading-[.9]">
                 Vamos a
                 <br />

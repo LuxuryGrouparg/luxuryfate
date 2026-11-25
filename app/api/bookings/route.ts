@@ -1,6 +1,6 @@
 import { createBooking, publicView } from '@/lib/server/bookings';
 
-// POST /api/bookings — crea la reserva y, si es con Mercado Pago, devuelve el link de pago.
+// POST /api/bookings — guarda la reserva (pending_whatsapp), bloquea el horario y avisa al webhook de automatización.
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -12,5 +12,5 @@ export async function POST(req: Request) {
 
   const r = await createBooking(body as Record<string, unknown>);
   if (!r.ok) return Response.json({ error: r.error }, { status: r.status });
-  return Response.json({ booking: publicView(r.booking), checkout_url: r.checkoutUrl ?? null }, { status: 201 });
+  return Response.json({ booking: publicView(r.booking) }, { status: 201 });
 }

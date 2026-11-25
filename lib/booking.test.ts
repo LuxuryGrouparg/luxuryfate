@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeWhatsapp, validateBooking } from './booking.ts';
+import { SLOTS } from './availability.ts';
+import { normalizeWhatsapp, priceFor, validateBooking } from './booking.ts';
 import { addDays, longLabel, dowShort, isSunday } from './dates.ts';
 
 test('normalizeWhatsapp', () => {
@@ -12,9 +13,20 @@ test('normalizeWhatsapp', () => {
 });
 
 test('validateBooking', () => {
-  const ok = { firstName: 'Martín', lastName: 'Gómez', whatsapp: '379 555 0123', city: 'corrientes' as const, address: 'Junín 1234, 3° B', email: 'martin@mail.com' };
+  const ok = { firstName: 'Martín', lastName: 'Gómez', whatsapp: '379 555 0123', city: 'corrientes' as const, address: 'Junín 1234, 3° B', note: '' };
   assert.deepEqual(validateBooking(ok), {});
-  assert.deepEqual(Object.keys(validateBooking({ ...ok, address: ' ', email: 'x@' })).sort(), ['address', 'email']);
+  assert.deepEqual(Object.keys(validateBooking({ ...ok, address: ' ', note: 'x'.repeat(301) })).sort(), ['address', 'note']);
+});
+
+test('priceFor aplica Martes de Studio solo al corte y solo los martes', () => {
+  assert.deepEqual(priceFor('corte', '2026-12-01'), { price: 8000, promo: 'martes_studio' }); // martes
+  assert.deepEqual(priceFor('corte', '2026-12-02'), { price: 12000, promo: null });
+  assert.deepEqual(priceFor('corte-barba', '2026-12-01'), { price: 14000, promo: null });
+  assert.deepEqual(priceFor('corte', null), { price: 12000, promo: null });
+});
+
+test('turnos de 1 hora de 10 a 19', () => {
+  assert.deepEqual(SLOTS, ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00']);
 });
 
 test('fechas', () => {

@@ -16,6 +16,11 @@
   --color-bk-card: #181818;
   --color-bk-line: #2a2a2a;
   --color-bk-on: #242424;
+  /* Acento verde: puntual, nunca de fondo dominante. El texto verde va siempre en green-200 (contraste ≥ 4.5:1). */
+  --color-green-900: #14271d;
+  --color-green-700: #1f3d2b;
+  --color-green-400: #5e8a6c;
+  --color-green-200: #a9c2af;
   --font-sans: var(--font-archivo), sans-serif;
 }
 

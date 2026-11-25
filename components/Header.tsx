@@ -25,7 +25,7 @@ export default function Header() {
           </button>
           <nav aria-label="Principal" className="lb hidden flex-wrap gap-7 md:flex">
             {site.nav.map((l) => (
-              <a key={l.href} href={l.href} className="text-muted">
+              <a key={l.href} href={l.href} className="text-muted decoration-green-400 underline-offset-[6px] hover:text-ivory hover:underline">
                 {l.label}
               </a>
             ))}
@@ -33,8 +33,8 @@ export default function Header() {
         </div>
 
         <a href="#top" className="flex flex-col items-center gap-1 text-center text-white" aria-label={`${site.name}, volver arriba`}>
-          <span className="hx text-[17px] font-bold tracking-[.14em] whitespace-nowrap md:text-[26px]">LUXURY FADE</span>
-          <span className="lb pl-[.5em] text-[7px] tracking-[.5em] whitespace-nowrap text-dim md:text-[9px]">Studio · Experiencia privada</span>
+          <span className="hx text-[14px] font-bold tracking-[.1em] whitespace-nowrap md:text-[26px] md:tracking-[.14em]">LUXURY FADE STUDIO</span>
+          <span className="lb pl-[.5em] text-[7px] tracking-[.5em] whitespace-nowrap text-dim md:text-[9px]">Private Grooming</span>
         </a>
 
         <div className="flex items-center justify-end gap-[22px]">

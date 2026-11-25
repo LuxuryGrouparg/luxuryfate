@@ -12,13 +12,10 @@ type Store = {
   lockAll(keys: string[], owner: string, ttlSec: number | null): Promise<boolean>;
   /** Libera solo las claves que siguen siendo de `owner`. */
   unlockAll(keys: string[], owner: string): Promise<void>;
-  /** Quita el vencimiento a las claves de `owner`; devuelve false si alguna ya no es suya. */
-  persistAll(keys: string[], owner: string): Promise<boolean>;
   anyLocked(keys: string[]): Promise<boolean>;
 };
 
 const UNLOCK = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0`;
-const PERSIST = `if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('persist', KEYS[1]) return 1 end return 0`;
 
 function redisStore(redis: Redis): Store {
   const s: Store = {
@@ -38,11 +35,6 @@ function redisStore(redis: Redis): Store {
     },
     async unlockAll(keys, owner) {
       for (const k of keys) await redis.eval(UNLOCK, [k], [owner]);
-    },
-    async persistAll(keys, owner) {
-      let ok = true;
-      for (const k of keys) ok = (await redis.eval(PERSIST, [k], [owner])) === 1 && ok;
-      return ok;
     },
     anyLocked: async (keys) => keys.length > 0 && (await redis.exists(...keys)) > 0,
   };
@@ -67,15 +59,6 @@ function memoryStore(): Store {
     },
     async unlockAll(keys, owner) {
       for (const k of keys) if (live(k)?.v === owner) data.delete(k);
-    },
-    async persistAll(keys, owner) {
-      let ok = true;
-      for (const k of keys) {
-        const e = live(k);
-        if (e?.v === owner) e.exp = null;
-        else ok = false;
-      }
-      return ok;
     },
     anyLocked: async (keys) => keys.some((k) => live(k)),
   };

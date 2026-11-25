@@ -1,14 +1,13 @@
 // Todo el contenido editable de la web. Cambiá acá precios, horarios y datos de contacto.
 // Los datos de contacto son de ejemplo: reemplazalos por los reales antes de publicar.
 
-export type Category = 'Cortes' | 'Barba' | 'Rituales';
-
 export type Service = {
   id: string;
   name: string;
-  durationMin: number;
+  detail: string;
   price: number; // ARS
-  category: Category;
+  /** Se muestra destacado en la agenda, con la etiqueta "Recomendado". */
+  featured?: boolean;
 };
 
 export type SiteImage = {
@@ -53,6 +52,7 @@ export const site = {
     display: 'Lunes a sábado, con turno previo',
     // Para el JSON-LD de SEO.
     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    // Turnos de 1 hora: el primero a la hora de apertura, el último una hora antes del cierre (10:00 … 19:00).
     opens: '10:00',
     closes: '20:00',
   },
@@ -60,15 +60,36 @@ export const site = {
   /** Botón flotante de WhatsApp. */
   whatsappFloat: false,
 
+  // Todos los turnos duran 1 hora, sea cual sea el servicio.
   services: [
-    { id: 'corte-clasico', name: 'Corte clásico', durationMin: 45, price: 18000, category: 'Cortes' },
-    { id: 'corte-barba', name: 'Corte + barba', durationMin: 75, price: 26000, category: 'Cortes' },
-    { id: 'afeitado-navaja', name: 'Afeitado con navaja', durationMin: 40, price: 16000, category: 'Barba' },
-    { id: 'perfilado-barba', name: 'Perfilado de barba', durationMin: 30, price: 12000, category: 'Barba' },
-    { id: 'ritual-luxury', name: 'Ritual Luxury', durationMin: 100, price: 38000, category: 'Rituales' },
-    { id: 'lavado-masaje', name: 'Lavado + masaje capilar', durationMin: 20, price: 9000, category: 'Rituales' },
-    { id: 'color-canas', name: 'Color / camuflaje de canas', durationMin: 60, price: 22000, category: 'Cortes' },
-  ] satisfies Service[],
+    { id: 'corte', name: 'Corte', detail: 'Corte a medida', price: 12000 },
+    { id: 'corte-barba', name: 'Corte + barba', detail: 'Corte y barba, cejas de regalo', price: 14000 },
+    { id: 'barba', name: 'Barba', detail: 'Solo barba', price: 5000 },
+    {
+      id: 'experiencia-completa',
+      name: 'Experiencia completa',
+      detail: 'Corte, barba, cejas y unos 5 minutos de masaje en hombros y nuca con pistola de masajes',
+      price: 17000,
+      featured: true,
+    },
+  ] as Service[],
+
+  // Beneficios del Studio. Poné `active: false` para apagar uno; si no queda ninguno, la franja de arriba no se muestra.
+  promos: {
+    martesStudio: {
+      active: true,
+      label: 'Martes de Studio',
+      text: 'Martes de Studio: tu corte a $8.000.',
+      weekday: 2, // 0 = domingo, 2 = martes
+      serviceId: 'corte',
+      price: 8000,
+    },
+    ritualMensual: {
+      active: true,
+      text: 'Ritual mensual: en tu cuarto corte del mes, 50% off.',
+      short: 'Ritual mensual: tu 4.º corte del mes con 50% off.',
+    },
+  },
 
   moments: [
     { title: 'La llegada', line: 'Puntuales, impecables.' },
@@ -103,3 +124,26 @@ export const site = {
 export const whatsappUrl = `https://wa.me/${site.contact.whatsappNumber}`;
 
 export const formatPrice = (n: number) => `$${n.toLocaleString('es-AR')}`;
+
+/** Mensaje de WhatsApp que se abre al confirmar el turno. Editá el texto acá. */
+export const whatsappMessage = (b: {
+  clientType: 'nuevo' | 'habitual';
+  service: string;
+  price: number;
+  promo: string | null; // nombre del beneficio aplicado, o null
+  day: string; // 'Martes 01/12'
+  time: string;
+  address: string;
+  city: string;
+  name: string;
+  note: string;
+}) => `Hola ${site.name}, quiero confirmar mi turno:
+
+• Cliente: ${b.clientType}
+• Servicio: ${b.service} – ${formatPrice(b.price)}${b.promo ? ` (${b.promo})` : ''}
+• Día: ${b.day} a las ${b.time} h
+• Dirección: ${b.address}, ${b.city}
+• Nombre: ${b.name}
+• Nota: ${b.note || '—'}
+
+¡Gracias!`;

@@ -1,80 +1,40 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { formatPrice, site, type Category } from '@/config/site';
+import { formatPrice, site, whatsappMessage } from '@/config/site';
 import type { Slot } from '@/lib/availability';
-import { validateBooking, type BookingForm, type City, type FormErrors } from '@/lib/booking';
+import { isPromoDay, NOTE_MAX, priceFor, validateBooking, type BookingForm, type City, type ClientType, type FormErrors } from '@/lib/booking';
 import { addDays, arNow, dayNum, dowShort, isSunday, longLabel } from '@/lib/dates';
 import { OPEN_BOOKING_EVENT } from './ui';
 
-type ClientType = 'primera_vez' | 'habitual';
-type Pay = 'mp_deposit' | 'mp_full' | 'transfer';
-
-const TITLES = ['', 'Bienvenido', 'Elegí tu experiencia', 'Elegí horario', 'Confirmá y señá', '¡Listo!'];
-const CATS: ('Todos' | Category)[] = ['Todos', 'Cortes', 'Barba', 'Rituales'];
+const TITLES = ['', 'Bienvenido', 'Elegí tu experiencia', 'Elegí día y horario', 'Tus datos', '¡Listo!'];
 const CLIENTS: { id: ClientType; name: string; note: string; ini: string }[] = [
-  { id: 'primera_vez', name: 'Primera vez', note: 'Empezamos con una consulta para conocer tu estilo y lo que buscás.', ini: '1ª' },
+  { id: 'nuevo', name: 'Cliente nuevo', note: 'Empezamos con una consulta para conocer tu estilo y lo que buscás.', ini: '1ª' },
   { id: 'habitual', name: 'Cliente habitual', note: 'Tu ritual de siempre, donde estés.', ini: 'LF' },
 ];
 const CITIES: { id: City; name: string }[] = [
   { id: 'corrientes', name: 'Corrientes Capital' },
   { id: 'resistencia', name: 'Resistencia' },
 ];
+const SERVICES = [...site.services].sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
 const MIN_PRICE = Math.min(...site.services.map((s) => s.price));
-const EMPTY_FORM: BookingForm = { firstName: '', lastName: '', whatsapp: '', city: 'corrientes', address: '', email: '' };
-const SAVED_KEY = 'lf-booking-draft'; // datos del paso 4, para reintentar al volver de Mercado Pago
-
-type ResultKind = 'loading' | 'confirmed' | 'transfer' | 'review' | 'pending' | 'failed';
-type Result = { kind: ResultKind; id?: string; service: string; date: string; time: string; amount: number; method: Pay };
-type PublicBooking = { id: string; status: string; service: string; date: string; time: string; method: Pay; amount: number };
-
-const RESULT_COPY: Record<ResultKind, { title: [string, string]; text: string; foot: string }> = {
-  loading: { title: ['Verificando', 'tu pago'], text: 'Un momento…', foot: '' },
-  confirmed: {
-    title: ['Tu turno está', 'confirmado'],
-    text: 'Te enviamos la confirmación por WhatsApp. Llegamos puntuales a la dirección que indicaste.',
-    foot: 'Seña abonada',
-  },
-  transfer: {
-    title: ['Tu turno está', 'reservado'],
-    text: 'Te enviamos el alias por WhatsApp para transferir la seña. Cuando la recibamos, tu turno queda confirmado.',
-    foot: 'Seña a transferir',
-  },
-  review: { title: ['Recibimos', 'tu pago'], text: 'Te escribimos por WhatsApp para confirmar los detalles de tu turno.', foot: 'Abonado' },
-  pending: { title: ['Tu pago está', 'en proceso'], text: 'Apenas Mercado Pago lo apruebe, te confirmamos por WhatsApp.', foot: 'En proceso' },
-  failed: {
-    title: ['El pago no', 'se completó'],
-    text: 'No se realizó ningún cargo y el horario quedó liberado. Podés intentarlo de nuevo.',
-    foot: 'A pagar',
-  },
-};
-
-const STATUS_KIND: Record<string, ResultKind> = {
-  confirmed: 'confirmed',
-  needs_review: 'review',
-  pending_transfer: 'transfer',
-  pending_payment: 'pending',
-  payment_failed: 'failed',
-  cancelled: 'failed',
-};
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  if (!r.ok) throw new Error(String(r.status));
-  return r.json();
-}
+const EMPTY_FORM: BookingForm = { firstName: '', lastName: '', whatsapp: '', city: 'corrientes', address: '', note: '' };
+const { martesStudio, ritualMensual } = site.promos;
 
 const card = (selected: boolean) =>
-  selected ? 'border-white bg-bk-on' : 'border-bk-line bg-bk-card hover:border-dim';
+  selected ? 'border-green-400 bg-green-700' : 'border-bk-line bg-bk-card hover:border-green-400';
 const sectionLabel = 'text-xs tracking-[.2em] text-dim uppercase';
+const greenTag = 'inline-block border border-green-400 px-2 py-1 text-[10px] tracking-[.16em] text-green-200 uppercase';
 const inputCls =
   'w-full border border-bk-line bg-bk-card p-[11px] text-sm text-ivory placeholder:text-[#5E5E5E] aria-invalid:border-[#C9705F] focus-visible:border-white focus-visible:outline-none';
+
+/** 'Martes 01/12' */
+const shortDay = (iso: string) => `${longLabel(iso).split(' ')[0]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 export default function BookingPanel() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [client, setClient] = useState<ClientType | null>(null);
-  const [cat, setCat] = useState<'Todos' | Category>('Todos');
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [days, setDays] = useState<string[]>([]);
   const [date, setDate] = useState<string | null>(null);
@@ -82,12 +42,11 @@ export default function BookingPanel() {
   const [slotsError, setSlotsError] = useState(false);
   const [reload, setReload] = useState(0);
   const [time, setTime] = useState<string | null>(null);
-  const [pay, setPay] = useState<Pay>('mp_deposit');
   const [form, setForm] = useState<BookingForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
+  const [waUrl, setWaUrl] = useState<string | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -96,10 +55,8 @@ export default function BookingPanel() {
   const autoDate = useRef(false);
 
   const service = site.services.find((s) => s.id === serviceId) ?? null;
-  const price = service?.price ?? 0;
-  const deposit = Math.round(price * 0.3);
-  const payNow = pay === 'mp_full' ? price : deposit;
-  const when = date && time ? `${longLabel(date)} · ${time} h` : '';
+  const { price, promo } = service ? priceFor(service.id, date) : { price: 0, promo: null };
+  const promoDay = !!date && isPromoDay(date);
 
   const showPanel = () => {
     openerRef.current = document.activeElement as HTMLElement | null;
@@ -108,36 +65,10 @@ export default function BookingPanel() {
     setOpen(true);
   };
 
-  /** Estado de una reserva al volver de Mercado Pago (`ret` = success | failure | pending). */
-  const loadResult = async (id: string, ret: string) => {
-    setResult((r) => (r ? { ...r, kind: 'loading' } : { kind: 'loading', id, service: '', date: '', time: '', amount: 0, method: 'mp_deposit' }));
-    try {
-      let { booking: b } = await fetchJson<{ booking: PublicBooking }>(`/api/bookings/${id}`);
-      if (b.status === 'pending_payment' && ret === 'failure') {
-        ({ booking: b } = await fetchJson<{ booking: PublicBooking }>(`/api/bookings/${id}/release`, { method: 'POST' }));
-      }
-      setResult({ kind: STATUS_KIND[b.status] ?? 'pending', id, service: b.service, date: b.date, time: b.time, amount: b.amount, method: b.method });
-    } catch {
-      setResult((r) => r && { ...r, kind: 'pending' });
-    }
-  };
-
   // Abrir desde cualquier botón "Agendar".
   useEffect(() => {
     window.addEventListener(OPEN_BOOKING_EVENT, showPanel);
     return () => window.removeEventListener(OPEN_BOOKING_EVENT, showPanel);
-  }, []);
-
-  // Vuelta desde Mercado Pago: /?booking=success|failure|pending&id=...
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    const ret = q.get('booking');
-    const id = q.get('id');
-    if (!ret || !id) return;
-    history.replaceState(null, '', window.location.pathname + window.location.hash);
-    showPanel();
-    setStep(5);
-    loadResult(id, ret);
   }, []);
 
   // Bloquear el scroll de la página y devolver el foco al cerrar.
@@ -158,11 +89,11 @@ export default function BookingPanel() {
 
   // Horarios disponibles del día elegido.
   useEffect(() => {
-    if (step !== 3 || !date || !service) return;
+    if (step !== 3 || !date) return;
     const ac = new AbortController();
     setSlots(null);
     setSlotsError(false);
-    fetch(`/api/availability?date=${date}&duration=${service.durationMin}`, { signal: ac.signal })
+    fetch(`/api/availability?date=${date}`, { signal: ac.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((j: { slots: Slot[] }) => {
         const next = days.slice(days.indexOf(date) + 1).find((d) => !isSunday(d));
@@ -171,7 +102,7 @@ export default function BookingPanel() {
       })
       .catch(() => !ac.signal.aborted && setSlotsError(true));
     return () => ac.abort();
-  }, [step, date, service, reload, days]);
+  }, [step, date, reload, days]);
 
   if (!open) return null;
 
@@ -182,34 +113,12 @@ export default function BookingPanel() {
       setServiceId(null);
       setDate(null);
       setTime(null);
-      setPay('mp_deposit');
       setForm(EMPTY_FORM);
       setErrors({});
-      setResult(null);
-      try {
-        sessionStorage.removeItem(SAVED_KEY);
-      } catch {}
+      setWaUrl(null);
     }
     setSubmitError(null);
     setStep(1);
-  };
-
-  /** Después de un pago fallido: vuelve al paso 4 con los datos que había cargado. */
-  const retry = () => {
-    let saved: { client: ClientType; serviceId: string; date: string; pay: Pay; form: BookingForm } | null = null;
-    try {
-      saved = JSON.parse(sessionStorage.getItem(SAVED_KEY) ?? 'null');
-    } catch {}
-    setResult(null);
-    if (!saved) return setStep(1);
-    setClient(saved.client);
-    setServiceId(saved.serviceId);
-    autoDate.current = !days.includes(saved.date);
-    setDate(autoDate.current ? (days.find((d) => !isSunday(d)) ?? null) : saved.date);
-    setTime(null); // el horario pudo ocuparse: se elige de nuevo
-    setPay(saved.pay);
-    setForm(saved.form);
-    setStep(3);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -220,7 +129,7 @@ export default function BookingPanel() {
     }
     if (e.key !== 'Tab') return;
     const focusables = [
-      ...panelRef.current!.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href]'),
+      ...panelRef.current!.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]'),
     ];
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
@@ -239,7 +148,6 @@ export default function BookingPanel() {
 
   const pickService = (id: string) => {
     setServiceId(id);
-    setTime(null);
     if (!date || !days.includes(date)) {
       autoDate.current = true;
       setDate(days.find((x) => !isSunday(x)) ?? null);
@@ -263,6 +171,8 @@ export default function BookingPanel() {
       return;
     }
 
+    // Se abre la pestaña ya, dentro del clic, para que el navegador no la bloquee; la URL se carga al guardar.
+    const tab = window.open('', '_blank');
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -274,31 +184,41 @@ export default function BookingPanel() {
           service_id: service.id,
           date,
           time,
-          payment_method: pay,
           first_name: form.firstName,
           last_name: form.lastName,
           whatsapp: form.whatsapp,
           city: form.city,
           address: form.address,
-          email: form.email,
+          note: form.note,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
+        tab?.close();
         setSubmitError(j.error ?? 'No pudimos registrar la reserva. Probá de nuevo.');
-        setSubmitting(false);
-        return;
+      } else {
+        const text = whatsappMessage({
+          clientType: client,
+          service: service.name,
+          price: j.booking.price,
+          promo: j.booking.promo ? martesStudio.label : null,
+          day: shortDay(date),
+          time,
+          address: form.address.trim(),
+          city: CITIES.find((c) => c.id === form.city)!.name,
+          name: `${form.firstName.trim()} ${form.lastName.trim()}`,
+          note: form.note.trim(),
+        });
+        const url = `https://wa.me/${site.contact.whatsappNumber}?text=${encodeURIComponent(text)}`;
+        setWaUrl(url);
+        if (tab) {
+          tab.opener = null;
+          tab.location.href = url;
+        }
+        setStep(5);
       }
-      if (j.checkout_url) {
-        try {
-          sessionStorage.setItem(SAVED_KEY, JSON.stringify({ client, serviceId, date, pay, form }));
-        } catch {}
-        window.location.assign(j.checkout_url); // se queda en "Procesando…" hasta que cambia la página
-        return;
-      }
-      setResult({ kind: 'transfer', id: j.booking.id, service: service.name, date, time, amount: payNow, method: pay });
-      setStep(5);
     } catch {
+      tab?.close();
       setSubmitError('No pudimos conectar. Revisá tu conexión y probá de nuevo.');
     }
     setSubmitting(false);
@@ -310,40 +230,20 @@ export default function BookingPanel() {
         return { label: 'Desde', amount: MIN_PRICE, cta: 'Continuar', disabled: !client, onClick: () => setStep(2) };
       case 2:
         return {
-          label: service ? 'Subtotal' : 'Desde',
+          label: service ? 'Total' : 'Desde',
           amount: service ? price : MIN_PRICE,
           cta: 'Elegir horario',
           disabled: !service,
           onClick: () => service && pickService(service.id),
         };
       case 3:
-        return { label: 'Subtotal', amount: price, cta: 'Continuar', disabled: !time, onClick: () => setStep(4) };
+        return { label: 'Total', amount: price, cta: 'Continuar', disabled: !time, onClick: () => setStep(4) };
       case 4:
-        return {
-          label: 'A pagar ahora',
-          amount: payNow,
-          cta: submitting ? 'Procesando…' : pay === 'mp_full' ? 'Pagar con Mercado Pago' : 'Reservar y pagar seña',
-          disabled: submitting,
-          submit: true,
-        };
-      default: {
-        const kind = result?.kind ?? 'loading';
-        return {
-          label: kind === 'confirmed' && result?.method === 'mp_full' ? 'Total abonado' : RESULT_COPY[kind].foot,
-          amount: result?.amount ?? 0,
-          cta: kind === 'failed' ? 'Reintentar' : 'Cerrar',
-          disabled: kind === 'loading',
-          onClick: kind === 'failed' ? retry : close,
-        };
-      }
+        return { label: 'Total', amount: price, cta: submitting ? 'Guardando…' : 'Confirmar por WhatsApp', disabled: submitting, submit: true };
+      default:
+        return { label: 'Total', amount: price, cta: 'Cerrar', disabled: false, onClick: close };
     }
   })();
-
-  const pays: { id: Pay; name: string; note: string; amount: number }[] = [
-    { id: 'mp_deposit', name: 'Seña 30% con Mercado Pago', note: 'El resto lo abonás en el local', amount: deposit },
-    { id: 'mp_full', name: 'Pago total con Mercado Pago', note: 'Tarjeta, débito o dinero en cuenta', amount: price },
-    { id: 'transfer', name: 'Transferencia (seña 30%)', note: 'Te enviamos el alias por WhatsApp', amount: deposit },
-  ];
 
   return (
     <div
@@ -369,10 +269,13 @@ export default function BookingPanel() {
               </button>
             )}
             <div>
-              <h2 id="bk-title" ref={titleRef} tabIndex={-1} className="hx font-bold text-[22px] outline-none">
-                {step === 5 && result && ['loading', 'pending', 'failed'].includes(result.kind) ? 'Tu reserva' : TITLES[step]}
+              <h2 id="bk-title" ref={titleRef} tabIndex={-1} className="hx text-[22px] font-bold outline-none">
+                {TITLES[step]}
               </h2>
-              <div className="mt-1 text-[11px] tracking-[.22em] text-white uppercase">Paso {step} de 5 · Luxury Fade Studio</div>
+              <div className="mt-1 text-[11px] tracking-[.22em] text-white uppercase">
+                {step < 5 ? `Paso ${step} de 4 · ` : ''}
+                {site.name}
+              </div>
             </div>
           </div>
           <button
@@ -391,10 +294,10 @@ export default function BookingPanel() {
         <div className="flex flex-1 flex-col gap-4 overflow-auto px-6 py-[22px]">
           {step === 1 && (
             <>
-              <p className="hx font-bold text-[26px] leading-[1.2]">
+              <p className="hx text-[26px] leading-[1.2] font-bold">
                 ¿Es tu primera vez
                 <br />
-                en <span className="font-light">Luxury Fade Studio</span>?
+                en <span className="font-light">{site.name}</span>?
               </p>
               {CLIENTS.map((k) => (
                 <button
@@ -407,12 +310,15 @@ export default function BookingPanel() {
                   }}
                   className={`flex cursor-pointer items-center gap-4 border px-5 py-6 text-left ${card(client === k.id)}`}
                 >
-                  <span className="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-full border border-white hx font-bold text-xl text-white">
+                  <span className="hx flex h-[52px] w-[52px] flex-none items-center justify-center rounded-full border border-white text-xl font-bold text-white">
                     {k.ini}
                   </span>
                   <span className="flex-1">
-                    <span className="block hx font-bold text-xl">{k.name}</span>
+                    <span className="hx block text-xl font-bold">{k.name}</span>
                     <span className="mt-1 block text-[13px] leading-normal text-dim">{k.note}</span>
+                    {k.id === 'habitual' && ritualMensual.active && (
+                      <span className="mt-2 block text-xs leading-normal text-green-200">{ritualMensual.short}</span>
+                    )}
                   </span>
                   <Chevron />
                 </button>
@@ -422,39 +328,24 @@ export default function BookingPanel() {
 
           {step === 2 && (
             <>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Categorías">
-                {CATS.map((c) => (
+              <p className="text-sm text-muted">Cada turno es de 1 hora, dedicado solo a vos.</p>
+              <div className="flex flex-col gap-2.5">
+                {SERVICES.map((s) => (
                   <button
-                    key={c}
+                    key={s.id}
                     type="button"
-                    aria-pressed={cat === c}
-                    onClick={() => setCat(c)}
-                    className={`cursor-pointer border px-3.5 py-2 text-xs font-medium tracking-widest uppercase ${
-                      cat === c ? 'border-white bg-white text-black' : 'border-bk-line text-muted hover:border-white'
-                    }`}
+                    aria-pressed={serviceId === s.id}
+                    onClick={() => pickService(s.id)}
+                    className={`flex cursor-pointer flex-col gap-2 border text-left ${s.featured ? 'p-5' : 'px-4 py-3.5'} ${card(serviceId === s.id)}`}
                   >
-                    {c}
+                    {s.featured && <span className={`${greenTag} self-start`}>Recomendado</span>}
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={`hx leading-[1.2] font-bold ${s.featured ? 'text-[22px]' : 'text-[17px]'}`}>{s.name}</span>
+                      <span className={`font-medium text-white ${s.featured ? 'text-base' : 'text-sm'}`}>{formatPrice(s.price)}</span>
+                    </span>
+                    <span className="text-xs leading-normal text-dim">{s.detail}</span>
                   </button>
                 ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                {site.services
-                  .filter((s) => cat === 'Todos' || s.category === cat)
-                  .map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      aria-pressed={serviceId === s.id}
-                      onClick={() => pickService(s.id)}
-                      className={`flex min-h-[120px] cursor-pointer flex-col justify-between gap-2.5 border p-4 text-left ${card(serviceId === s.id)}`}
-                    >
-                      <span className="hx font-bold text-[17px] leading-[1.2]">{s.name}</span>
-                      <span className="flex items-baseline justify-between text-xs text-dim">
-                        <span>{s.durationMin} min</span>
-                        <span className="text-sm font-medium text-white">{formatPrice(s.price)}</span>
-                      </span>
-                    </button>
-                  ))}
               </div>
             </>
           )}
@@ -462,42 +353,47 @@ export default function BookingPanel() {
           {step === 3 && service && (
             <>
               <div className="flex justify-between gap-3 border border-bk-line bg-bk-card px-4 py-3.5 text-sm text-muted">
-                <span>
-                  {service.name} · {service.durationMin} min
-                </span>
+                <span>{service.name} · 1 hora</span>
                 <span className="text-white">{formatPrice(price)}</span>
               </div>
               <div className="grid grid-cols-7 gap-1.5" role="group" aria-label="Día">
                 {days.map((d) => {
                   const off = isSunday(d);
                   const on = d === date;
+                  const perk = isPromoDay(d);
                   return (
                     <button
                       key={d}
                       type="button"
                       disabled={off}
                       aria-pressed={on}
-                      aria-label={off ? `${longLabel(d)}, sin turnos` : longLabel(d)}
+                      aria-label={`${longLabel(d)}${off ? ', sin turnos' : perk ? `, ${martesStudio.label}` : ''}`}
                       onClick={() => {
                         autoDate.current = false;
                         setDate(d);
                         setTime(null);
                       }}
-                      className={`flex flex-col items-center gap-0.5 rounded-full border py-2.5 ${
+                      className={`relative flex flex-col items-center gap-0.5 rounded-full border py-2.5 ${
                         on
-                          ? 'cursor-pointer border-white bg-white text-black'
+                          ? 'cursor-pointer border-green-400 bg-green-700 text-white'
                           : off
                             ? 'cursor-not-allowed border-bk-line text-faint'
-                            : 'cursor-pointer border-bk-line text-ivory hover:border-white'
+                            : 'cursor-pointer border-bk-line text-ivory hover:border-green-400'
                       }`}
                     >
                       <span className="text-[15px] font-medium">{dayNum(d)}</span>
                       <span className="text-[10px] tracking-[.08em]">{dowShort(d)}</span>
+                      {perk && <span aria-hidden="true" className="absolute -bottom-1 h-1.5 w-1.5 rounded-full bg-green-400" />}
                     </button>
                   );
                 })}
               </div>
-              {date && <div className="hx font-bold text-lg">{longLabel(date)}</div>}
+              {date && <div className="hx text-lg font-bold">{longLabel(date)}</div>}
+              {promoDay && (
+                <span className={`${greenTag} self-start`}>
+                  {martesStudio.label} · Corte {formatPrice(martesStudio.price)}
+                </span>
+              )}
               <div aria-live="polite">
                 {slotsError ? (
                   <p className="text-sm text-dim">
@@ -526,9 +422,9 @@ export default function BookingPanel() {
                         }}
                         className={`border py-3 text-sm font-medium ${
                           time === s.time
-                            ? 'cursor-pointer border-white bg-white text-black'
+                            ? 'cursor-pointer border-green-400 bg-green-700 text-white'
                             : s.available
-                              ? 'cursor-pointer border-bk-line bg-bk-card text-ivory hover:border-white'
+                              ? 'cursor-pointer border-bk-line bg-bk-card text-ivory hover:border-green-400'
                               : 'cursor-not-allowed border-bk-line bg-bk-card text-faint line-through'
                         }`}
                       >
@@ -541,38 +437,8 @@ export default function BookingPanel() {
             </>
           )}
 
-          {step === 4 && service && (
+          {step === 4 && service && date && (
             <form id="bk-form" noValidate onSubmit={submit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2 border border-bk-line bg-bk-card p-4">
-                <div className="flex justify-between gap-3 text-base">
-                  <span>{service.name}</span>
-                  <span>{formatPrice(price)}</span>
-                </div>
-                <div className="text-xs text-dim">
-                  {CLIENTS.find((k) => k.id === client)?.name} · {when}
-                </div>
-              </div>
-
-              <div className={sectionLabel}>Método de pago</div>
-              <div className="flex flex-col gap-2" role="group" aria-label="Método de pago">
-                {pays.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    aria-pressed={pay === p.id}
-                    onClick={() => setPay(p.id)}
-                    className={`flex cursor-pointer items-center justify-between gap-2.5 border px-4 py-3.5 text-left ${card(pay === p.id)}`}
-                  >
-                    <span>
-                      <span className="block text-[15px]">{p.name}</span>
-                      <span className="text-xs text-dim">{p.note}</span>
-                    </span>
-                    <span className="text-sm text-white">{formatPrice(p.amount)}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className={`${sectionLabel} mt-1`}>Tus datos</div>
               <div className="grid grid-cols-2 gap-2">
                 <Field id="firstName" label="Nombre" error={errors.firstName}>
                   <input
@@ -647,22 +513,32 @@ export default function BookingPanel() {
                   onChange={(e) => setField('address', e.target.value)}
                 />
               </Field>
-              <Field id="email" label="Email" error={errors.email}>
-                <input
-                  id="bk-email"
-                  type="email"
-                  autoComplete="email"
-                  className={inputCls}
-                  placeholder="tu@email.com"
-                  value={form.email}
-                  aria-invalid={!!errors.email}
-                  aria-describedby={errors.email ? 'bk-email-err' : undefined}
-                  onChange={(e) => setField('email', e.target.value)}
+              <Field id="note" label="¿Algo que debamos saber? (opcional)" error={errors.note}>
+                <textarea
+                  id="bk-note"
+                  rows={2}
+                  maxLength={NOTE_MAX}
+                  className={`${inputCls} resize-none`}
+                  placeholder="Quiero probar un fade bajo · Timbre del 3.º B"
+                  value={form.note}
+                  aria-invalid={!!errors.note}
+                  aria-describedby={errors.note ? 'bk-note-err' : undefined}
+                  onChange={(e) => setField('note', e.target.value)}
                 />
               </Field>
-              <p className="text-xs leading-[1.6] text-dim">
-                Cambio o cancelación sin cargo hasta 24 h antes del turno. La seña se descuenta del total.
-              </p>
+
+              <div className={`${sectionLabel} mt-1`}>Resumen</div>
+              <div className="flex flex-col gap-2 border border-bk-line bg-bk-card p-4">
+                <div className="flex justify-between gap-3 text-base">
+                  <span>{service.name}</span>
+                  <span>{formatPrice(price)}</span>
+                </div>
+                <div className="text-xs text-dim">
+                  {longLabel(date)} · {time} h
+                </div>
+                {promo && <span className={`${greenTag} self-start`}>{martesStudio.label}</span>}
+              </div>
+              <p className="text-xs leading-[1.6] text-dim">No se cobra nada ahora. Coordinamos el pago por WhatsApp.</p>
               {submitError && (
                 <p role="alert" className="border border-[#C9705F] px-4 py-3 text-sm text-[#E39A8B]">
                   {submitError}{' '}
@@ -674,36 +550,26 @@ export default function BookingPanel() {
             </form>
           )}
 
-          {step === 5 && result && (
+          {step === 5 && service && date && (
             <div className="flex flex-1 flex-col items-center justify-center gap-[18px] py-5 text-center" aria-live="polite">
-              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border border-white text-white">
+              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border border-green-400 text-green-200">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  {result.kind === 'failed' ? (
-                    <path d="M7 7l10 10M17 7L7 17" />
-                  ) : result.kind === 'loading' || result.kind === 'pending' ? (
-                    <path d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                  ) : (
-                    <path d="M5 12.5l4.5 4.5L19 7.5" />
-                  )}
+                  <path d="M5 12.5l4.5 4.5L19 7.5" />
                 </svg>
               </div>
-              <p className="hx font-bold text-[30px] leading-[1.15]">
-                {RESULT_COPY[result.kind].title[0]}
-                <br />
-                <span className="font-light">{RESULT_COPY[result.kind].title[1]}</span>
+              <p className="hx text-[30px] leading-[1.15] font-bold">Listo.</p>
+              <p className="max-w-[320px] text-[15px] leading-[1.6] text-muted">
+                Terminá de confirmar tu turno enviando el mensaje de WhatsApp que se abrió.
               </p>
-              {result.service && (
-                <p className="text-[15px] leading-[1.7] text-muted">
-                  {result.service}
-                  <br />
-                  {longLabel(result.date)} · {result.time} h
-                </p>
-              )}
-              <p className="max-w-[300px] text-[13px] leading-[1.6] text-dim">{RESULT_COPY[result.kind].text}</p>
-              {result.kind === 'pending' && result.id && (
-                <button type="button" className="cursor-pointer text-sm text-white underline" onClick={() => loadResult(result.id!, 'pending')}>
-                  Actualizar estado
-                </button>
+              <p className="text-[13px] leading-[1.7] text-dim">
+                {service.name}
+                <br />
+                {longLabel(date)} · {time} h
+              </p>
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer" className="btn-outline px-5 py-3 text-xs tracking-[.2em]">
+                  Abrir WhatsApp de nuevo
+                </a>
               )}
             </div>
           )}
@@ -713,7 +579,7 @@ export default function BookingPanel() {
         <div className="flex flex-col gap-3 border-t border-bk-line px-6 pt-[18px] pb-[22px]">
           <div className="flex items-baseline justify-between text-sm text-muted">
             <span>{footer.label}</span>
-            <span className="hx font-bold text-2xl text-white">{formatPrice(footer.amount)}</span>
+            <span className="hx text-2xl font-bold text-white">{formatPrice(footer.amount)}</span>
           </div>
           <button
             type={footer.submit ? 'submit' : 'button'}

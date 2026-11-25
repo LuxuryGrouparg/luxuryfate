@@ -1,14 +1,23 @@
-import { getBooking, publicView, syncBooking } from '@/lib/server/bookings';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { cancelBooking, getBooking, publicView } from '@/lib/server/bookings';
 
-// GET /api/bookings/:id — estado de la reserva al volver de Mercado Pago.
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+const hash = (s: string) => createHash('sha256').update(s).digest();
+
+/** La clave viaja en el header `Authorization: Bearer <ADMIN_KEY>`. */
+function authorized(req: Request) {
+  const key = process.env.ADMIN_KEY;
+  const given = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+  return !!key && timingSafeEqual(hash(given), hash(key));
+}
+
+// PATCH /api/bookings/:id  { "status": "cancelled" } — libera el horario de una reserva que no se confirmó.
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!authorized(req)) return Response.json({ error: 'No autorizado.' }, { status: 401 });
+  const body = await req.json().catch(() => null);
+  if (body?.status !== 'cancelled') return Response.json({ error: 'Solo se admite { "status": "cancelled" }.' }, { status: 400 });
+
   const { id } = await ctx.params;
-  let b = await getBooking(id);
+  const b = await getBooking(id);
   if (!b) return Response.json({ error: 'Reserva no encontrada.' }, { status: 404 });
-  try {
-    b = await syncBooking(b);
-  } catch (e) {
-    console.error('[bookings] no se pudo consultar MP', id, e); // se responde con el último estado guardado
-  }
-  return Response.json({ booking: publicView(b) }, { headers: { 'Cache-Control': 'no-store' } });
+  return Response.json({ booking: publicView(await cancelBooking(b)) });
 }

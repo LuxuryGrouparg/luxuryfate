@@ -1,6 +1,8 @@
-// Validación de los datos de la reserva. Se usa en el navegador y, desde la etapa 3, en el servidor.
+// Reglas de la reserva compartidas entre el navegador y el servidor.
+import { site } from '../config/site.ts';
 
 export type City = 'corrientes' | 'resistencia';
+export type ClientType = 'nuevo' | 'habitual';
 
 export type BookingForm = {
   firstName: string;
@@ -8,10 +10,12 @@ export type BookingForm = {
   whatsapp: string; // lo que escribió la persona, sin el +54 9
   city: City;
   address: string;
-  email: string;
+  note: string; // opcional
 };
 
 export type FormErrors = Partial<Record<keyof BookingForm, string>>;
+
+export const NOTE_MAX = 300;
 
 /** Celular argentino → '+549XXXXXXXXXX' (código de área sin 0 + número, 10 dígitos), o null si no es válido. */
 export function normalizeWhatsapp(raw: string): string | null {
@@ -29,6 +33,19 @@ export function validateBooking(f: BookingForm): FormErrors {
   if (!normalizeWhatsapp(f.whatsapp)) e.whatsapp = 'Ingresá código de área y número, sin 0 ni 15. Ej.: 379 555 0123.';
   if (f.city !== 'corrientes' && f.city !== 'resistencia') e.city = 'Elegí una ciudad.';
   if (f.address.trim().length < 5) e.address = 'Ingresá la dirección completa.';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim())) e.email = 'Ingresá un email válido.';
+  if (f.note.length > NOTE_MAX) e.note = `Máximo ${NOTE_MAX} caracteres.`;
   return e;
+}
+
+/** ¿El beneficio "Martes de Studio" aplica a este día ('YYYY-MM-DD')? */
+export function isPromoDay(date: string) {
+  const p = site.promos.martesStudio;
+  return p.active && new Date(`${date}T12:00:00Z`).getUTCDay() === p.weekday;
+}
+
+/** Precio final de un servicio en un día, con el beneficio aplicado si corresponde. */
+export function priceFor(serviceId: string, date: string | null): { price: number; promo: 'martes_studio' | null } {
+  const p = site.promos.martesStudio;
+  if (date && serviceId === p.serviceId && isPromoDay(date)) return { price: p.price, promo: 'martes_studio' };
+  return { price: site.services.find((s) => s.id === serviceId)?.price ?? 0, promo: null };
 }
