@@ -1,0 +1,139 @@
+@import 'tailwindcss';
+
+/* Paleta monocromática (referencia/Mono.dc.html). */
+@theme inline {
+  --color-black: #080808;
+  --color-white: #ffffff;
+  --color-ivory: #f2f2f0;
+  --color-muted: #c9c9c9;
+  --color-dim: #929292;
+  --color-grey: #555555;
+  --color-faint: #4a4a4a;
+  --color-line: #242424;
+  --color-contact: #111111;
+  /* Ventana de agenda (referencia/BookingMono.dc.html) */
+  --color-bk-panel: #111111;
+  --color-bk-card: #181818;
+  --color-bk-line: #2a2a2a;
+  --color-bk-on: #242424;
+  --font-sans: var(--font-archivo), sans-serif;
+}
+
+/* Entrada de la ventana de agenda: desde abajo en mobile, desde la derecha en desktop. */
+@keyframes lf-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes lf-left {
+  from {
+    transform: translateX(48px);
+    opacity: 0;
+  }
+}
+@keyframes lf-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bk-backdrop {
+    animation: lf-fade 0.25s ease-out;
+  }
+  .bk-panel {
+    animation: lf-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @media (min-width: 768px) {
+    .bk-panel {
+      animation-name: lf-left;
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  background: var(--color-black);
+  color: var(--color-ivory);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+/* En base para que las clases de Tailwind (text-muted, etc.) puedan pisarlo. */
+@layer base {
+  a {
+    color: var(--color-ivory);
+    transition: color 0.2s;
+  }
+  a:hover {
+    color: var(--color-dim);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-white);
+    outline-offset: 3px;
+  }
+  #about :focus-visible {
+    outline-color: var(--color-black);
+  }
+}
+
+@layer components {
+  /* Títulos: Archivo condensado, negrita, mayúsculas. */
+  .hx {
+    font-stretch: 72%;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+  }
+  .lb {
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+  }
+  .btn-primary {
+    cursor: pointer;
+    background: var(--color-white);
+    color: var(--color-black);
+    font-weight: 600;
+    text-transform: uppercase;
+    transition: background 0.2s;
+  }
+  .btn-primary:hover {
+    background: var(--color-muted);
+  }
+  .btn-outline {
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--color-ivory);
+    color: var(--color-ivory);
+    font-weight: 600;
+    text-transform: uppercase;
+    transition: background 0.2s, color 0.2s;
+  }
+  .btn-outline:hover {
+    background: var(--color-ivory);
+    color: var(--color-black);
+  }
+  /* Fotos siempre en blanco y negro. */
+  .bw {
+    filter: grayscale(1) contrast(1.05);
+  }
+  /* Placeholder de foto, igual al diseño, mientras no haya imagen cargada. */
+  .ph {
+    background: linear-gradient(160deg, #3a3a3a 0%, #1c1c1c 45%, #0e0e0e 100%);
+  }
+  .ph-label {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    margin: 14px;
+    font: 500 10px/1.4 var(--font-sans);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #9a9a9a;
+    border: 1px solid #3c3c3c;
+    padding: 6px 10px;
+    background: rgba(8, 8, 8, 0.4);
+  }
+}
