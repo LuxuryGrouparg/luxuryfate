@@ -16,6 +16,9 @@ test('validateBooking', () => {
   const ok = { firstName: 'Martín', lastName: 'Gómez', whatsapp: '379 555 0123', city: 'corrientes' as const, address: 'Junín 1234, 3° B', note: '' };
   assert.deepEqual(validateBooking(ok), {});
   assert.deepEqual(Object.keys(validateBooking({ ...ok, address: ' ', note: 'x'.repeat(301) })).sort(), ['address', 'note']);
+  assert.deepEqual(validateBooking({ ...ok, firstName: 'María José', lastName: 'Ñandú' }), {});
+  assert.deepEqual(Object.keys(validateBooking({ ...ok, firstName: 'J4ime', lastName: 'G' })).sort(), ['firstName', 'lastName']);
+  assert.deepEqual(Object.keys(validateBooking({ ...ok, address: 'Calle Junín sin número' })), ['address']); // falta el número
 });
 
 test('priceFor aplica Martes de Studio solo al corte y solo los martes', () => {

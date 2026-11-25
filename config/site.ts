@@ -37,8 +37,8 @@ export const site = {
   ],
 
   contact: {
-    whatsappDisplay: '+54 9 379 555-0123',
-    whatsappNumber: '5493795550123', // sin +, espacios ni guiones (formato wa.me)
+    whatsappDisplay: '+54 9 379 431-4511',
+    whatsappNumber: '5493794314511', // sin +, espacios ni guiones (formato wa.me). Lo usan todos los links, la agenda y el JSON-LD.
     email: 'hola@luxuryfadestudio.com.ar',
     instagram: 'https://instagram.com/luxuryfadestudio',
   },
@@ -136,6 +136,7 @@ export const whatsappMessage = (b: {
   address: string;
   city: string;
   name: string;
+  whatsapp: string; // del cliente, '+549…'
   note: string;
 }) => `Hola ${site.name}, quiero confirmar mi turno:
 
@@ -144,6 +145,7 @@ export const whatsappMessage = (b: {
 • Día: ${b.day} a las ${b.time} h
 • Dirección: ${b.address}, ${b.city}
 • Nombre: ${b.name}
+• WhatsApp: ${b.whatsapp}
 • Nota: ${b.note || '—'}
 
 ¡Gracias!`;

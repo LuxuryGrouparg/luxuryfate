@@ -16,6 +16,8 @@ export type BookingForm = {
 export type FormErrors = Partial<Record<keyof BookingForm, string>>;
 
 export const NOTE_MAX = 300;
+/** Solo letras (con tildes y ñ) y espacios: "María José". */
+const NAME_RE = /^\p{L}[\p{L} ]*$/u;
 
 /** Celular argentino → '+549XXXXXXXXXX' (código de área sin 0 + número, 10 dígitos), o null si no es válido. */
 export function normalizeWhatsapp(raw: string): string | null {
@@ -28,11 +30,15 @@ export function normalizeWhatsapp(raw: string): string | null {
 
 export function validateBooking(f: BookingForm): FormErrors {
   const e: FormErrors = {};
-  if (f.firstName.trim().length < 2) e.firstName = 'Ingresá tu nombre.';
-  if (f.lastName.trim().length < 2) e.lastName = 'Ingresá tu apellido.';
-  if (!normalizeWhatsapp(f.whatsapp)) e.whatsapp = 'Ingresá código de área y número, sin 0 ni 15. Ej.: 379 555 0123.';
+  const name = (v: string, what: string) =>
+    v.trim().length < 2 ? `Ingresá tu ${what} (mínimo 2 letras).` : !NAME_RE.test(v.trim()) ? `Usá solo letras y espacios en tu ${what}.` : null;
+  const fn = name(f.firstName, 'nombre');
+  const ln = name(f.lastName, 'apellido');
+  if (fn) e.firstName = fn;
+  if (ln) e.lastName = ln;
+  if (!normalizeWhatsapp(f.whatsapp)) e.whatsapp = 'Ingresá código de área y número (10 dígitos), sin 0 ni 15. Ej.: 379 555 0123.';
   if (f.city !== 'corrientes' && f.city !== 'resistencia') e.city = 'Elegí una ciudad.';
-  if (f.address.trim().length < 5) e.address = 'Ingresá la dirección completa.';
+  if (f.address.trim().length < 5 || !/\d/.test(f.address)) e.address = 'Ingresá calle y número (mínimo 5 caracteres).';
   if (f.note.length > NOTE_MAX) e.note = `Máximo ${NOTE_MAX} caracteres.`;
   return e;
 }

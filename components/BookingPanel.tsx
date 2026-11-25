@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { formatPrice, site, whatsappMessage } from '@/config/site';
+import { formatPrice, site, whatsappMessage, whatsappUrl } from '@/config/site';
 import type { Slot } from '@/lib/availability';
-import { isPromoDay, NOTE_MAX, priceFor, validateBooking, type BookingForm, type City, type ClientType, type FormErrors } from '@/lib/booking';
+import { isPromoDay, normalizeWhatsapp, NOTE_MAX, priceFor, validateBooking, type BookingForm, type City, type ClientType, type FormErrors } from '@/lib/booking';
 import { addDays, arNow, dayNum, dowShort, isSunday, longLabel } from '@/lib/dates';
 import { OPEN_BOOKING_EVENT } from './ui';
 
@@ -42,7 +42,7 @@ export default function BookingPanel() {
   const [reload, setReload] = useState(0);
   const [time, setTime] = useState<string | null>(null);
   const [form, setForm] = useState<BookingForm>(EMPTY_FORM);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Partial<Record<keyof BookingForm, boolean>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [waUrl, setWaUrl] = useState<string | null>(null);
@@ -56,6 +56,11 @@ export default function BookingPanel() {
   const service = site.services.find((s) => s.id === serviceId) ?? null;
   const { price, promo } = service ? priceFor(service.id, date) : { price: 0, promo: null };
   const promoDay = !!date && isPromoDay(date);
+  const allErrors = validateBooking(form);
+  const formValid = Object.keys(allErrors).length === 0;
+  // El error de cada campo se muestra recién después de salir de él, para no marcar en rojo mientras se escribe.
+  const errors: FormErrors = Object.fromEntries(Object.entries(allErrors).filter(([k]) => touched[k as keyof BookingForm]));
+  const honeypot = useRef<HTMLInputElement>(null);
 
   const showPanel = () => {
     openerRef.current = document.activeElement as HTMLElement | null;
@@ -113,7 +118,7 @@ export default function BookingPanel() {
       setDate(null);
       setTime(null);
       setForm(EMPTY_FORM);
-      setErrors({});
+      setTouched({});
       setWaUrl(null);
     }
     setSubmitError(null);
@@ -128,7 +133,7 @@ export default function BookingPanel() {
     }
     if (e.key !== 'Tab') return;
     const focusables = [
-      ...panelRef.current!.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]'),
+      ...panelRef.current!.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), textarea, a[href]'),
     ];
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
@@ -156,15 +161,13 @@ export default function BookingPanel() {
 
   const setField = <K extends keyof BookingForm>(k: K, v: BookingForm[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
-    if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting || !service || !date || !time || !client) return;
-    const errs = validateBooking(form);
-    setErrors(errs);
-    const firstInvalid = Object.keys(errs)[0];
+    setTouched({ firstName: true, lastName: true, whatsapp: true, address: true, note: true });
+    const firstInvalid = Object.keys(allErrors)[0];
     if (firstInvalid) {
       document.getElementById(`bk-${firstInvalid}`)?.focus();
       return;
@@ -189,6 +192,7 @@ export default function BookingPanel() {
           city: form.city,
           address: form.address,
           note: form.note,
+          website: honeypot.current?.value ?? '',
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -206,9 +210,10 @@ export default function BookingPanel() {
           address: form.address.trim(),
           city: CITIES.find((c) => c.id === form.city)!.name,
           name: `${form.firstName.trim()} ${form.lastName.trim()}`,
+          whatsapp: normalizeWhatsapp(form.whatsapp)!,
           note: form.note.trim(),
         });
-        const url = `https://wa.me/${site.contact.whatsappNumber}?text=${encodeURIComponent(text)}`;
+        const url = `${whatsappUrl}?text=${encodeURIComponent(text)}`;
         setWaUrl(url);
         if (tab) {
           tab.opener = null;
@@ -238,7 +243,7 @@ export default function BookingPanel() {
       case 3:
         return { label: 'Total', amount: price, cta: 'Continuar', disabled: !time, onClick: () => setStep(4) };
       case 4:
-        return { label: 'Total', amount: price, cta: submitting ? 'Guardando…' : 'Confirmar por WhatsApp', disabled: submitting, submit: true };
+        return { label: 'Total', amount: price, cta: submitting ? 'Guardando…' : 'Confirmar por WhatsApp', disabled: submitting || !formValid, submit: true };
       default:
         return { label: 'Total', amount: price, cta: 'Cerrar', disabled: false, onClick: close };
     }
@@ -437,7 +442,25 @@ export default function BookingPanel() {
           )}
 
           {step === 4 && service && date && (
-            <form id="bk-form" noValidate onSubmit={submit} className="flex flex-col gap-4">
+            <form
+              id="bk-form"
+              noValidate
+              onSubmit={submit}
+              onBlur={(e) => {
+                const k = e.target.id.replace('bk-', '') as keyof BookingForm;
+                if (k in form) setTouched((t) => ({ ...t, [k]: true }));
+              }}
+              className="relative flex flex-col gap-4"
+            >
+              {/* Trampa para bots: invisible para personas; si llega completa, el servidor descarta la reserva. */}
+              <input
+                ref={honeypot}
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="absolute -left-[9999px] h-px w-px opacity-0"
+              />
               <div className="grid grid-cols-2 gap-2">
                 <Field id="firstName" label="Nombre" error={errors.firstName}>
                   <input

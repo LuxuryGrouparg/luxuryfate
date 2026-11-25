@@ -13,6 +13,8 @@ type Store = {
   /** Libera solo las claves que siguen siendo de `owner`. */
   unlockAll(keys: string[], owner: string): Promise<void>;
   anyLocked(keys: string[]): Promise<boolean>;
+  /** Suma 1 al contador `key` y devuelve el total; el contador vence `ttlSec` después del primer uso. */
+  hit(key: string, ttlSec: number): Promise<number>;
 };
 
 const UNLOCK = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0`;
@@ -37,6 +39,11 @@ function redisStore(redis: Redis): Store {
       for (const k of keys) await redis.eval(UNLOCK, [k], [owner]);
     },
     anyLocked: async (keys) => keys.length > 0 && (await redis.exists(...keys)) > 0,
+    async hit(key, ttlSec) {
+      const n = await redis.incr(key);
+      if (n === 1) await redis.expire(key, ttlSec);
+      return n;
+    },
   };
   return s;
 }
@@ -61,6 +68,12 @@ function memoryStore(): Store {
       for (const k of keys) if (live(k)?.v === owner) data.delete(k);
     },
     anyLocked: async (keys) => keys.some((k) => live(k)),
+    async hit(k, ttlSec) {
+      const e = live(k);
+      const n = ((e?.v as number) ?? 0) + 1;
+      data.set(k, { v: n, exp: e?.exp ?? Date.now() + ttlSec * 1000 });
+      return n;
+    },
   };
 }
 
